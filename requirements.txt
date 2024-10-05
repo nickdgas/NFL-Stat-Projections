@@ -1,0 +1,14 @@
+numpy==1.26.4
+pandas==2.2.0
+pendulum==3.0.0
+pyarrow==15.0.0
+Scrapy==2.11.2
+lxml>=4.9.1
+PyDispatcher>=2.0.5
+cryptography>=3.4.6
+parsel>=1.6.0
+cssselect>=1.1.0
+attrs>=19.3.0
+itemloaders>=1.0.4
+queuelib>=1.6.2
+w3lib>=1.21.0
