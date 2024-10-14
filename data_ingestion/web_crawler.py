@@ -1,13 +1,14 @@
 import os
 import logging
+import warnings
 import pendulum
 import pandas as pd
+from typing import Generator, Any
 from faker import Faker
 from scrapy.http import Request
 from scrapy import Spider
 from scrapy.crawler import CrawlerProcess
 from scrapy.spidermiddlewares.httperror import HttpError
-import warnings
 
 warnings.filterwarnings("ignore")
 
@@ -24,16 +25,16 @@ class NFLStatsCrawler(Spider):
     year = pendulum.now().year
 
     @staticmethod
-    def list_urls(positions, year):
+    def list_urls(positions, year) -> list[str]:
         """
         Generate URLs for the specified positions and year.
         
-        Args:
-            positions (list): List of offensive positions.
-            year (int): The year for which to fetch the stats.
+        Parameters:
+        - positions (list): List of offensive positions.
+        - year (int): The year for which to fetch the stats.
 
         Returns:
-            list: List of URLs to scrape.
+        list[str]: List of URLs to scrape.
         """
         urls = []
         for pos in positions:
@@ -55,9 +56,15 @@ class NFLStatsCrawler(Spider):
 
     start_urls = list_urls(offensive_positions, year)
 
-    def start_requests(self):
+    def start_requests(self) -> Generator[Request, Any, None]:
         """
         Make requests to URLs and set callbacks for parsing and error logging.
+
+        Parameters:
+        - self (Self@NFLStatsCrawler): Class instance reference.
+
+        Returns:
+        Generator[Request, Any, None]: Yield request(s) to URL(s) and collect response/log errors.
         """
         for url in self.start_urls:
             yield Request(
@@ -69,15 +76,15 @@ class NFLStatsCrawler(Spider):
             )
 
     @staticmethod
-    def clean_data(value):
+    def clean_data(value: Any) -> (int | float | Any | None):
         """
         Clean and convert extracted data to appropriate types.
         
-        Args:
-            value: The extracted value to clean.
+        Parameters:
+        - value (Any): The extracted value to clean.
 
         Returns:
-            The cleaned value, or None if it was None.
+        (int | float | Any | None): The cleaned value, or None if it was None.
         """
         if value is None:
             return None
@@ -90,16 +97,16 @@ class NFLStatsCrawler(Spider):
             return value
 
     @staticmethod
-    def create_dataframe(position: str, rows) -> pd.DataFrame:
+    def create_dataframe(position: str, rows: Any) -> pd.DataFrame:
         """
         Create a DataFrame from the extracted rows based on the player's position.
         
-        Args:
-            position (str): The position of the players (QB, RB, WR, TE).
-            rows: The rows extracted from the response.
+        Parameters:
+        - position (str): The position of the players (QB, RB, WR, TE).
+        - rows (Any): The rows extracted from the response.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the statistics.
+        pd.DataFrame: A DataFrame containing the statistics.
         """
         position_mapping = {
             "QB": [
@@ -222,12 +229,16 @@ class NFLStatsCrawler(Spider):
         df = df.dropna(axis="rows", how="all").reset_index(drop=True)
         return df
 
-    def parse_nfl_stats(self, response):
+    def parse_nfl_stats(self, response: Any) -> None:
         """
         Parse the response and save the statistics to a CSV file.
         
-        Args:
-            response: The response object from Scrapy.
+        Parameters:
+        - self (Self@NFLStatsCrawler): Class instance reference.
+        - response (Any): The response object from Scrapy.
+
+        Returns:
+        None: Stores weekly statistics as CSV.  
         """
         crawler_logger.info(f"Processing {response.url}")
         position = response.url.split("advanced-stats-")[1].split(".php")[0].upper()
@@ -240,12 +251,16 @@ class NFLStatsCrawler(Spider):
         stats_df.to_csv(f"advanced_stats/{position.lower()}_stats/{year}/nfl_stats_{position.lower()}_week_{week}.csv", index=False)
         crawler_logger.info(f"{year} data exported to nfl_stats_{position.lower()}_week_{week}.csv")
 
-    def log_errors(self, failure):
+    def log_errors(self, failure: Any) -> None:
         """
-        Log any errors encountered during the requests.
+        Log errors encountered during requests and data retrieval.
         
-        Args:
-            failure: The failure object containing error details.
+        Parameters:
+        - self (Self@NFLStatsCrawler): Class instance reference.
+        - failure (Any): The failure object containing error details.
+
+        Returns:
+        None: Display error logs within console.
         """
         crawler_logger.error(repr(failure))
         if failure.check(HttpError):
@@ -263,7 +278,16 @@ class NFLStatsCrawler(Spider):
             crawler_logger.error("Request failed with %s", failure)
 
 
-def trigger_process():
+def trigger_process() -> None:
+    """
+    Trigger web crawler
+
+    Parameters:
+    - None
+
+    Returns:
+    None: Crawl fantasypros.com 
+    """
     stats_crawler = NFLStatsCrawler
     logging.getLogger("scrapy").propagate = False
     process = CrawlerProcess(install_root_handler=False)
