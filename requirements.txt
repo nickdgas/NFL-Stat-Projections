@@ -12,3 +12,4 @@ attrs>=19.3.0
 itemloaders>=1.0.4
 queuelib>=1.6.2
 w3lib>=1.21.0
+Faker==30.3.0
