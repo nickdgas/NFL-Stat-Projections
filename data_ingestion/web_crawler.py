@@ -23,7 +23,7 @@ class NFLStatsCrawler(Spider):
 
     offensive_positions = ["QB"]  # , "RB", "WR", "TE"]
     year = pendulum.now().year
-    backfill_year = pendulum.now().subtract(years=(year - 2020))
+    backfill_year = pendulum.now().subtract(years=(year - 2021))
 
     def __init__(self, backfill: bool = False, *args, **kwargs):
         """
@@ -100,9 +100,14 @@ class NFLStatsCrawler(Spider):
         Returns:
         (int | float | Any | None): The cleaned value, or None if it was None.
         """
-        if value is None:
-            return None
+        if value is None or value == "" or value == " " or value is pd.NA:
+            return 0.0
         value = value.strip()
+        if "%" in value:
+            try:
+                return float(value.replace("%", "")) / 100.0
+            except ValueError:
+                return 0.0 
         if value.isdigit():
             return int(value)
         try:
@@ -230,9 +235,7 @@ class NFLStatsCrawler(Spider):
                             for stat_name, xpath in pos_mapping.items()
                         }
                     )
-                df = pd.DataFrame(data)
-                df = df.dropna(axis="rows", how="all").reset_index(drop=True)
-                df.reset_index(drop=True, inplace=True)
+                df = pd.DataFrame(data).dropna(how="all").fillna(0.0).reset_index(drop=True)
                 return df
 
     def parse_basic_nfl_stats(self, response: Any) -> Generator[Request, Any, None]:
@@ -289,7 +292,7 @@ class NFLStatsCrawler(Spider):
 
         merged_df = pd.merge(
             advanced_stats_df, basic_stats_df, on=["PLAYER"], how="left"
-        )
+        ).fillna(0.0)
         filepath = f"stats/{position.lower()}_stats/{year}/nfl_stats_{position.lower()}_week_{week}.csv"
         merged_df.to_csv(filepath, index=False)
         crawler_logger.info(f"Exported data to {filepath}")
@@ -338,5 +341,5 @@ def trigger_process(backfill: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    trigger_process()
-    # trigger_process(backfill=True)
+    # trigger_process()
+    trigger_process(backfill=True)
