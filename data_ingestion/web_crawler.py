@@ -341,5 +341,5 @@ def trigger_process(backfill: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    # trigger_process()
-    trigger_process(backfill=True)
+    trigger_process()
+    # trigger_process(backfill=True)
