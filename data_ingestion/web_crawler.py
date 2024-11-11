@@ -22,8 +22,8 @@ class NFLStatsCrawler(Spider):
     allowed_domains = ["fantasypros.com"]
 
     offensive_positions = ["QB"]  # , "RB", "WR", "TE"]
-    year = pendulum.now().year
-    backfill_year = pendulum.now().subtract(years=(year - 2021))
+    current_year = pendulum.now().year
+    backfill_year = pendulum.now().subtract(years=(current_year - 2021)).year
 
     def __init__(self, backfill: bool = False, *args, **kwargs):
         """
@@ -36,11 +36,11 @@ class NFLStatsCrawler(Spider):
         super().__init__(*args, **kwargs)
         if backfill:
             self.start_urls = self.list_urls(
-                self.offensive_positions, range(self.backfill_year.year, self.year + 1)
+                self.offensive_positions, range(self.backfill_year, self.current_year + 1)
             )
         else:
             self.start_urls = self.list_urls(
-                self.offensive_positions, range(self.year, self.year + 1)
+                self.offensive_positions, range(self.current_year, self.current_year + 1)
             )
 
     @staticmethod
@@ -67,7 +67,7 @@ class NFLStatsCrawler(Spider):
                             f"https://www.fantasypros.com/nfl/advanced-stats-{pos.lower()}.php?year={year}&week={week}&range=week",
                         )
                     )
-        return sorted(urls)
+        return sorted(urls, key=lambda x: int(x[0].split('week=')[1].split('&')[0]))
 
     def start_requests(self) -> Generator[Request, Any, None]:
         """
