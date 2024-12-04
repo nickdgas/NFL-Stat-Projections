@@ -16,12 +16,11 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s")
 crawler_logger = logging.getLogger("NFL-Crawler")
 crawler_logger.setLevel(logging.INFO)
 
-
 class NFLStatsCrawler(Spider):
     name = "nfl_stats_crawler"
     allowed_domains = ["fantasypros.com"]
 
-    offensive_positions = ["QB"]  # , "RB", "WR", "TE"]
+    offensive_positions = ["QB", "RB", "WR", "TE"]
     current_year = pendulum.now().year
     backfill_year = pendulum.now().subtract(years=(current_year - 2021)).year
 
@@ -221,6 +220,23 @@ class NFLStatsCrawler(Spider):
                     "RUSHING_TD": "./td[13]/text()",
                     "MISC_FL": "./td[14]/text()",
                     "MISC_FPTS": "./td[16]/text()",
+                },
+                "RB": {
+                    "PLAYER": "./td[@class='player-label player-label-report-page']/a/text()",
+                    "RUSHING_TD": "./td[8]/text()",
+                    "RECEIVING_Y/R": "./td[12]/text()",
+                    "RECEIVING_TD": "./td[13]/text()",
+                    "MISC_FL": "./td[14]/text()",
+                    "MISC_FPTS": "./td[16]/text()",
+                },
+                ("WR", "TE"): {
+                    "PLAYER": "./td[@class='player-label player-label-report-page']/a/text()",
+                    "RECEIVING_TD": "./td[9]/text()",
+                    "RUSHING_ATT": "./td[10]/text()",
+                    "RUSHING_YDS": "./td[11]/text()",
+                    "RUSHING_TD": "./td[12]/text()",
+                    "MISC_FL": "./td[13]/text()",
+                    "MISC_FPTS": "./td[15]/text()",
                 },
             }
         for pos_key, pos_mapping in position_mapping.items():
