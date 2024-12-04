@@ -2,9 +2,14 @@ import os
 import logging
 import warnings
 import pandas as pd
+import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.tools import mpl_to_plotly 
 import pendulum
+import shap
+from shap.plots import beeswarm
+from sklearn.ensemble import RandomForestRegressor
 
 warnings.filterwarnings("ignore")
 
@@ -15,15 +20,15 @@ processor_logger.setLevel(logging.INFO)
 
 class NFLStatsProcessor:
     """
-    A class to process NFL stats, generate visualizations, and save them for later viewing.
+    A class to process NFL stats, generate visualizations, and save them for feature analysis.
 
     Attributes:
-        offensive_positions (list): Positions to process (currently only "QB").
-        current_year (int): The current year.
-        backfill_year (int): The year to start backfilling the stats from.
+    - offensive_positions (list): Positions to process.
+    - current_year (int): The current year.
+    - backfill_year (int): The year to start backfilling the stats from.
     """
 
-    offensive_positions = ["QB"]  # , "RB", "WR", "TE"]
+    offensive_positions = ["QB"]#, "RB", "WR", "TE"]
     current_year = pendulum.now().year
     backfill_year = pendulum.now().subtract(years=(current_year - 2021)).year
 
@@ -106,7 +111,7 @@ class NFLStatsProcessor:
         return player_stats
 
     @staticmethod
-    def save_plot(fig, filename: str) -> None:
+    def save_plot(fig, playername: str, filename: str) -> None:
         """
         Save a Plotly figure as an HTML file.
 
@@ -114,39 +119,116 @@ class NFLStatsProcessor:
         - fig (plotly.graph_objs.Figure): The Plotly figure to save.
         - filename (str): The filename for saving the HTML file.
         """
-        if not os.path.exists("visualizations"):
-            os.makedirs("visualizations")
-        fig.write_html(f"visualizations/{filename}")
+        if not os.path.exists(f"visualizations/{playername.replace(' ', '').lower()}"):
+            os.makedirs(f"visualizations/{playername.replace(' ', '').lower()}")
+        fig.write_html(f"visualizations/{playername.replace(' ', '').lower()}/{filename}")
         processor_logger.info(f"Saved visualization: {filename}")
 
     @staticmethod
     def create_plot(
-        df: pd.DataFrame, plot_type: str, x_col: str, y_col: str, title: str
+        df: pd.DataFrame,
+        plot_type: str,
+        x_col: str = None,
+        y_col: str = None,
+        c_col: str = None,
+        f_row: str = None,
+        title: str = None,
     ) -> go.Figure:
         """
         Create a plot based on the given parameters.
 
         Parameters:
         - df (pd.DataFrame): Data for plotting.
-        - plot_type (str): Type of plot ('line', 'scatter', 'bar').
+        - plot_type (str): Type of plot ('line', 'scatter', 'bar', 'stack_bar', 'correlation', 'shap').
         - x_col (str): Column name to use for the x-axis.
         - y_col (str): Column name to use for the y-axis.
+        - c_col (str): Column name to use for color differentiation.
+        - f_row (str): Column name for facet rows.
         - title (str): Title of the plot.
 
         Returns:
         plotly.graph_objs.Figure: A Plotly figure object.
         """
         if plot_type == "line":
-            fig = px.line(df, x=x_col, y=y_col, title=title, color="YEAR", line_shape="linear")
+            fig = px.line(
+                df,
+                x=x_col,
+                y=y_col,
+                facet_row=f_row,
+                color=c_col,
+                line_shape="linear",
+                title=title,
+            )
+            fig.update_layout(showlegend=True)
         elif plot_type == "scatter":
             fig = px.scatter(df, x=x_col, y=y_col, title=title)
+            fig.update_layout(showlegend=True)
         elif plot_type == "bar":
-            fig = px.bar(df, x=x_col, y=y_col, title=title, color="YEAR")
+            fig = px.bar(df, x=x_col, y=y_col, color=c_col, title=title)
+            fig.update_layout(showlegend=True)
         elif plot_type == "stack_bar":
-            fig = px.bar(df, x=x_col, y=y_col, title=title, color="YEAR", barmode="group")
-        elif plot_type == "hist":
-            fig = px.histogram(df, x=x_col, nbins=30, title=title)
-        fig.update_layout(showlegend=True)
+            fig = px.bar(
+                df,
+                x=x_col,
+                y=y_col,
+                facet_row=f_row,
+                color=c_col,
+                barmode="stack",
+                title=title,
+            )
+            fig.update_layout(showlegend=True)
+        elif plot_type == "correlation":
+            fig = go.Figure(
+                go.Heatmap(
+                    z=df.values,
+                    x=df.columns,
+                    y=df.index,
+                    colorscale=px.colors.diverging.RdBu,
+                    text=df.values,
+                    texttemplate="%{text:.2f}",
+                    zmin=-1,
+                    zmax=1,
+                )
+            )
+            fig.update_layout(
+                title=title,
+                yaxis_autorange="reversed",
+            )
+        elif plot_type == "shap":
+            df = df[df["GAMES"] != 0]
+            X = df.drop(
+                columns=[
+                    "MISC_FPTS",
+                    "RANK",
+                    "PLAYER",
+                    "GAMES",
+                    "POSITION",
+                    "YEAR",
+                    "WEEK",
+                ]
+            )
+            y = df["MISC_FPTS"]
+            model = RandomForestRegressor(random_state=42)
+            model.fit(X, y)
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X)
+            explanation = shap.Explanation(
+                values=shap_values, 
+                base_values=explainer.expected_value, 
+                data=X
+            )
+            beeswarm(explanation, max_display=len(X.columns), show=False)
+            fig =  mpl_to_plotly(
+                plt.gcf()
+            )
+            fig.update_layout(
+                title=title,
+                yaxis=dict(
+                    tickmode="array", 
+                    tickvals=list(range(len(X.columns))), 
+                    ticktext=X.columns.tolist()  
+                ),
+            )
         return fig
 
     def generate_and_save_plots(self, player_name: str) -> None:
@@ -155,101 +237,134 @@ class NFLStatsProcessor:
 
         Parameters:
         - player_name (str): The name of the target player.
-
-        Returns:
-        None
         """
         historical_player_stats = self.get_player_stats(player_name)
-        historical_player_stats["TOTAL_TD"] = (
-            historical_player_stats["PASSING_TD"]
-            + historical_player_stats["RUSHING_TD"]
-        )
-        overall_passing_yards = (
-            historical_player_stats[["PASSING_YDS", "YEAR", "WEEK"]]
+        overall_fantasy_points = (
+            historical_player_stats[["MISC_FPTS", "YEAR", "WEEK"]]
             .groupby(by=["YEAR", "WEEK"])
             .agg("sum")
             .reset_index()
+            .rename(columns={"MISC_FPTS": "FPTS"})
         )
-        overall_rushing_yards = (
-            historical_player_stats[["RUSHING_YDS", "YEAR", "WEEK"]]
+        overall_yards_attempts = (
+            historical_player_stats[
+                [
+                    "PASSING_YDS",
+                    "RUSHING_YDS",
+                    "PASSING_ATT",
+                    "RUSHING_ATT",
+                    "YEAR",
+                    "WEEK",
+                ]
+            ]
             .groupby(by=["YEAR", "WEEK"])
             .agg("sum")
             .reset_index()
+            .melt(
+                id_vars=["YEAR", "WEEK"],
+                value_vars=["PASSING_YDS", "RUSHING_YDS", "PASSING_ATT", "RUSHING_ATT"],
+                var_name="STAT",
+                value_name="VALUE",
+            )
         )
+        overall_attempts = overall_yards_attempts[
+            overall_yards_attempts["STAT"].isin(["PASSING_ATT", "RUSHING_ATT"])
+        ].rename(columns={"VALUE": "ATT"})
+        overall_yards = overall_yards_attempts[
+            overall_yards_attempts["STAT"].isin(["PASSING_YDS", "RUSHING_YDS"])
+        ].rename(columns={"VALUE": "YDS"})
         overall_touchdowns = (
-            historical_player_stats[["TOTAL_TD", "YEAR", "WEEK"]]
+            historical_player_stats[["PASSING_TD", "RUSHING_TD", "YEAR", "WEEK"]]
             .groupby(by=["YEAR", "WEEK"])
-            .agg("sum")
+            .sum()
             .reset_index()
+            .melt(
+                id_vars=["YEAR", "WEEK"],
+                value_vars=["PASSING_TD", "RUSHING_TD"],
+                var_name="STAT",
+                value_name="TD",
+            )
         )
-        games_missed = (
-            historical_player_stats[historical_player_stats["GAMES"] == 0][["GAMES", "YEAR"]]
-            .groupby(by=["YEAR"])
-            .agg("count")
-            .reset_index()
+        correlation_matrix = (
+            historical_player_stats[historical_player_stats["GAMES"] != 0]
+            .drop(columns=["RANK", "PLAYER", "GAMES", "POSITION", "YEAR", "WEEK"])
+            .corr()[["MISC_FPTS"]]
+            .sort_values(by="MISC_FPTS", ascending=False)
         )
-
         plot_definitions = [
             (
-                historical_player_stats,
-                "hist",
-                "PASSING_YDS",
-                None,
-                f"{player_name} - Distribution of Passing Yards",
-                "passing_yards_distribution.html",
-            ),
-            (
-                historical_player_stats,
-                "hist",
-                "RUSHING_YDS",
-                None,
-                f"{player_name} - Distribution of Rushing Yards",
-                "rushing_yards_distribution.html",
-            ),
-            (
-                historical_player_stats,
-                "hist",
-                "TOTAL_TD",
-                None,
-                f"{player_name} - Distribution of Touchdowns",
-                "touchdowns_distribution.html",
-            ),
-            (
-                overall_passing_yards,
+                overall_fantasy_points,
                 "line",
                 "WEEK",
-                "PASSING_YDS",
-                f"{player_name} - Passing Yards per Game",
-                "passing_yards_season.html",
+                "FPTS",
+                "YEAR",
+                "YEAR",
+                f"{player_name} - Fantasy Points",
+                "pts_per_season.html",
             ),
             (
-                overall_rushing_yards,
+                overall_yards,
                 "line",
                 "WEEK",
-                "RUSHING_YDS",
-                f"{player_name} - Rushing Yards Per Game",
-                "rushing_yards_game.html",
+                "YDS",
+                "STAT",
+                "YEAR",
+                f"{player_name} - Passing/Rushing Yards",
+                "yards_per_season.html",
+            ),
+            (
+                overall_attempts,
+                "stack_bar",
+                "WEEK",
+                "ATT",
+                "STAT",
+                "YEAR",
+                f"{player_name} - Passing/Rushing Attempts",
+                "attempts_per_season.html",
             ),
             (
                 overall_touchdowns,
                 "stack_bar",
                 "WEEK",
-                "TOTAL_TD",
-                f"{player_name} - Total TDs Per Game",
-                "touchdowns_game.html",
+                "TD",
+                "STAT",
+                "YEAR",
+                f"{player_name} - Touchdowns",
+                "touchdowns_per_season.html",
             ),
             (
-                games_missed,
-                "bar",
-                "YEAR",
-                "GAMES",
-                f"{player_name} - Games Missed Per Season",
-                "games_missed_season.html",
+                correlation_matrix,
+                "correlation",
+                None,
+                None,
+                None,
+                None,
+                f"{player_name} - Correlation to Fantasy Points",
+                "stats_correlation_heatmap.html",
+            ),
+            (
+                historical_player_stats,
+                "shap",
+                None,
+                None,
+                None,
+                None,
+                "SHAP Feature Importance",
+                "shap_summary_plot.html",
             ),
         ]
-        for df, plot_type, x_col, y_col, title, file_name in plot_definitions:
-            fig = self.create_plot(df, plot_type, x_col, y_col, title)
-            self.save_plot(fig, file_name)
+        for (
+            df,
+            plot_type,
+            x_col,
+            y_col,
+            c_col,
+            f_row,
+            title,
+            file_name,
+        ) in plot_definitions:
+            fig = self.create_plot(df, plot_type, x_col, y_col, c_col, f_row, title)
+            self.save_plot(fig, player_name, file_name)
         processor_logger.info("EDA completed and plots saved.")
 
 
@@ -261,6 +376,9 @@ def trigger_process() -> None:
     historical_stats = process.stats
     processor_logger.info(f"Data loaded with {len(historical_stats)} rows.")
     process.generate_and_save_plots("Lamar Jackson")
+    # process.generate_and_save_plots("Justin Jefferson")
+    # process.generate_and_save_plots("Joe Mixon")
+    # process.generate_and_save_plots("George Kittle")
 
 
 if __name__ == "__main__":
