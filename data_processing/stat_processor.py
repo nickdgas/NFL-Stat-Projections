@@ -23,30 +23,35 @@ class NFLStatsProcessor:
     A class to process NFL stats, generate visualizations, and save them for feature analysis.
 
     Attributes:
-    - offensive_positions (list): Positions to process.
     - current_year (int): The current year.
     - backfill_year (int): The year to start backfilling the stats from.
     """
 
-    offensive_positions = ["QB"]#, "RB", "WR", "TE"]
     current_year = pendulum.now().year
     backfill_year = pendulum.now().subtract(years=(current_year - 2021)).year
 
-    def __init__(self):
+    def __init__(self, player_name: str, offensive_position: str):
         """
         Initialize list of files to process for offensive positions and years.
+
+        Parameters:
+        - player_name (str): Name of player being researched.
+        - offensive_position (str): Position target player plays.
         """
+        self.player_name = player_name
+        self.offensive_position = offensive_position
         self.files = self.list_files(
-            self.offensive_positions, range(self.backfill_year, self.current_year + 1)
+            self.offensive_position, 
+            range(self.backfill_year, self.current_year + 1)
         )
 
     @staticmethod
-    def list_files(positions: list[str], year_range: range) -> dict:
+    def list_files(position: str, year_range: range) -> dict:
         """
         List files for the specified positions and year range.
 
         Parameters:
-        - positions (list[str]): List of offensive positions to process.
+        - position ((str): Position target player plays
         - year_range (range): Range of years to fetch stats for.
 
         Returns:
@@ -54,12 +59,11 @@ class NFLStatsProcessor:
         """
         files = {}
         for year in year_range:
-            for pos in positions:
-                directory = f"stats/{pos.lower()}_stats/{year}"
-                files[year] = sorted(
-                    os.listdir(directory),
-                    key=lambda x: int(x.split("_")[-1].split(".")[0]),
-                )
+            directory = f"stats/{position.lower()}_stats/{year}"
+            files[year] = sorted(
+                os.listdir(directory),
+                key=lambda x: int(x.split("_")[-1].split(".")[0]),
+            )
         return files
 
     @property
@@ -72,42 +76,38 @@ class NFLStatsProcessor:
         """
         df_list = []
         file_dict = self.files
-        for pos in self.offensive_positions:
-            for year in range(self.backfill_year, self.current_year + 1):
-                for file in file_dict[year]:
-                    directory = f"stats/{pos.lower()}_stats/{year}"
-                    file_path = os.path.join(directory, file)
-                    processor_logger.info(f"Reading file: {file_path}")
-                    df = pd.read_csv(file_path)
-                    df["POSITION"] = pos
-                    df["YEAR"] = year
-                    df["WEEK"] = int(file.split("_")[-1].split(".")[0])
-                    df_list.append(df)
+        for year in range(self.backfill_year, self.current_year + 1):
+            for file in file_dict[year]:
+                directory = f"stats/{self.offensive_position.lower()}_stats/{year}"
+                file_path = os.path.join(directory, file)
+                processor_logger.info(f"Reading file: {file_path}")
+                df = pd.read_csv(file_path)
+                df["POSITION"] = self.offensive_position
+                df["YEAR"] = year
+                df["WEEK"] = int(file.split("_")[-1].split(".")[0])
+                df_list.append(df)
         stats_df = pd.concat(df_list, ignore_index=True)
         return stats_df
 
     def get_player_stats(
-        self, player_name: str, year: int = None, position: str = None
+        self, year: int = None
     ) -> pd.DataFrame:
         """
         Extracts individual player's statistics based on player name, year, and position.
 
         Parameters:
-        - player_name (str): Name of the player to filter for.
         - year (int, optional): Year of the statistics to filter for. Defaults to None (all years).
-        - position (str, optional): Position of the player to filter for. Defaults to None (all positions).
 
         Returns:
         pd.DataFrame: A DataFrame containing the statistics of the specified player.
         """
         stats_df = self.stats
         player_stats = stats_df[
-            stats_df["PLAYER"].str.contains(player_name, case=False, na=False)
+            stats_df["PLAYER"].str.contains(self.player_name, case=False, na=False)
         ]
         if year:
             player_stats = player_stats[player_stats["YEAR"] == year]
-        if position:
-            player_stats = player_stats[player_stats["POSITION"] == position]
+            player_stats = player_stats[player_stats["POSITION"] == self.offensive_position]
         return player_stats
 
     @staticmethod
@@ -117,12 +117,14 @@ class NFLStatsProcessor:
 
         Parameters:
         - fig (plotly.graph_objs.Figure): The Plotly figure to save.
+        - playername (str): Name of player being researched.
         - filename (str): The filename for saving the HTML file.
         """
-        if not os.path.exists(f"visualizations/{playername.replace(' ', '').lower()}"):
-            os.makedirs(f"visualizations/{playername.replace(' ', '').lower()}")
-        fig.write_html(f"visualizations/{playername.replace(' ', '').lower()}/{filename}")
-        processor_logger.info(f"Saved visualization: {filename}")
+        graph_path = f"visualizations/{playername.replace(' ', '').lower()}/"
+        if not os.path.exists(graph_path):
+            os.makedirs(graph_path)
+        fig.write_html(graph_path+filename)
+        processor_logger.info(f"Saved visualization for {playername}: {filename}")
 
     @staticmethod
     def create_plot(
@@ -231,14 +233,11 @@ class NFLStatsProcessor:
             )
         return fig
 
-    def generate_and_save_plots(self, player_name: str) -> None:
+    def generate_and_save_plots(self) -> None:
         """
         Generate and save multiple visualizations for a given player's performance over time.
-
-        Parameters:
-        - player_name (str): The name of the target player.
         """
-        historical_player_stats = self.get_player_stats(player_name)
+        historical_player_stats = self.get_player_stats()
         overall_fantasy_points = (
             historical_player_stats[["MISC_FPTS", "YEAR", "WEEK"]]
             .groupby(by=["YEAR", "WEEK"])
@@ -246,12 +245,21 @@ class NFLStatsProcessor:
             .reset_index()
             .rename(columns={"MISC_FPTS": "FPTS"})
         )
+        if self.offensive_position == "QB":
+            yards_col = "PASSING_YDS"
+            attempts_col = "PASSING_ATT"
+            td_col = "PASSING_TD"
+        else:
+            yards_col = "RECEIVING_YDS"
+            attempts_col = "RECEIVING_REC"
+            td_col = "RECEIVING_TD"
+
         overall_yards_attempts = (
             historical_player_stats[
                 [
-                    "PASSING_YDS",
+                    yards_col,
+                    attempts_col,
                     "RUSHING_YDS",
-                    "PASSING_ATT",
                     "RUSHING_ATT",
                     "YEAR",
                     "WEEK",
@@ -262,25 +270,25 @@ class NFLStatsProcessor:
             .reset_index()
             .melt(
                 id_vars=["YEAR", "WEEK"],
-                value_vars=["PASSING_YDS", "RUSHING_YDS", "PASSING_ATT", "RUSHING_ATT"],
+                value_vars=[yards_col, attempts_col, "RUSHING_YDS", "RUSHING_ATT"],
                 var_name="STAT",
                 value_name="VALUE",
             )
         )
         overall_attempts = overall_yards_attempts[
-            overall_yards_attempts["STAT"].isin(["PASSING_ATT", "RUSHING_ATT"])
+            overall_yards_attempts["STAT"].isin([attempts_col, "RUSHING_ATT"])
         ].rename(columns={"VALUE": "ATT"})
         overall_yards = overall_yards_attempts[
-            overall_yards_attempts["STAT"].isin(["PASSING_YDS", "RUSHING_YDS"])
+            overall_yards_attempts["STAT"].isin([yards_col, "RUSHING_YDS"])
         ].rename(columns={"VALUE": "YDS"})
         overall_touchdowns = (
-            historical_player_stats[["PASSING_TD", "RUSHING_TD", "YEAR", "WEEK"]]
+            historical_player_stats[[td_col, "RUSHING_TD", "YEAR", "WEEK"]]
             .groupby(by=["YEAR", "WEEK"])
             .sum()
             .reset_index()
             .melt(
                 id_vars=["YEAR", "WEEK"],
-                value_vars=["PASSING_TD", "RUSHING_TD"],
+                value_vars=[td_col, "RUSHING_TD"],
                 var_name="STAT",
                 value_name="TD",
             )
@@ -299,7 +307,7 @@ class NFLStatsProcessor:
                 "FPTS",
                 "YEAR",
                 "YEAR",
-                f"{player_name} - Fantasy Points",
+                f"{self.player_name} - Fantasy Points",
                 "pts_per_season.html",
             ),
             (
@@ -309,7 +317,7 @@ class NFLStatsProcessor:
                 "YDS",
                 "STAT",
                 "YEAR",
-                f"{player_name} - Passing/Rushing Yards",
+                f"{self.player_name} - Overall Yards",
                 "yards_per_season.html",
             ),
             (
@@ -319,7 +327,7 @@ class NFLStatsProcessor:
                 "ATT",
                 "STAT",
                 "YEAR",
-                f"{player_name} - Passing/Rushing Attempts",
+                f"{self.player_name} - Overall Attempts",
                 "attempts_per_season.html",
             ),
             (
@@ -329,7 +337,7 @@ class NFLStatsProcessor:
                 "TD",
                 "STAT",
                 "YEAR",
-                f"{player_name} - Touchdowns",
+                f"{self.player_name} - Oveerall Touchdowns",
                 "touchdowns_per_season.html",
             ),
             (
@@ -339,7 +347,7 @@ class NFLStatsProcessor:
                 None,
                 None,
                 None,
-                f"{player_name} - Correlation to Fantasy Points",
+                f"{self.player_name} - Correlation to Fantasy Points",
                 "stats_correlation_heatmap.html",
             ),
             (
@@ -364,22 +372,33 @@ class NFLStatsProcessor:
             file_name,
         ) in plot_definitions:
             fig = self.create_plot(df, plot_type, x_col, y_col, c_col, f_row, title)
-            self.save_plot(fig, player_name, file_name)
+            self.save_plot(fig, self.player_name, file_name)
         processor_logger.info("EDA completed and plots saved.")
 
 
-def trigger_process() -> None:
+def trigger_process(player_name: str, offensive_position: str) -> None:
     """
     Trigger the data loading and visualization process.
     """
-    process = NFLStatsProcessor()
+    process = NFLStatsProcessor(player_name, offensive_position)
     historical_stats = process.stats
     processor_logger.info(f"Data loaded with {len(historical_stats)} rows.")
-    process.generate_and_save_plots("Lamar Jackson")
-    # process.generate_and_save_plots("Justin Jefferson")
-    # process.generate_and_save_plots("Joe Mixon")
-    # process.generate_and_save_plots("George Kittle")
+    process.generate_and_save_plots()
 
 
 if __name__ == "__main__":
-    trigger_process()
+    fantasy_team = {
+        "QB": "Lamar Jackson",
+        "WR": ["Justin Jefferson", "CeeDee Lamb"],
+        "RB": ["Joe Mixon", "Derrick Henry"],
+        "TE": "George Kittle"
+    }
+    for position, players in fantasy_team.items():
+        if not isinstance(players, list):
+            players = [players]
+        for player_name in players:
+            processor_logger.info(f"Processing stats for {player_name} ({position})")
+            try:
+                trigger_process(player_name, position)
+            except Exception as e:
+                processor_logger.error(f"Failed for {player_name} ({position}): {e}")
