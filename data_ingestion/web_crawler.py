@@ -224,6 +224,7 @@ class NFLStatsCrawler(Spider):
                 "RB": {
                     "PLAYER": "./td[@class='player-label player-label-report-page']/a/text()",
                     "RUSHING_TD": "./td[8]/text()",
+                    "RECEIVING_YDS": "./td[11]/text()",
                     "RECEIVING_Y/R": "./td[12]/text()",
                     "RECEIVING_TD": "./td[13]/text()",
                     "MISC_FL": "./td[14]/text()",

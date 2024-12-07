@@ -7,12 +7,8 @@ The **NFL Stats Crawler** is a web scraper built using the Scrapy framework, des
 - **Dynamic URL Generation**: Automatically constructs URLs for scraping based on the selected position, week, and year.
 - **Data Cleaning and Formatting**: The scraper processes raw data by converting it into appropriate formats (e.g., integers, floats).
 - **Multi-Position Scraping**: Supports stats collection for multiple offensive positions.
-- **Comprehensive Error Logging**: Implements a robust logging system to track and report any issues that arise during the scraping process.
+- **Error Logging**: Implements logging to track and report any issues encountered during web crawling.
 - **CSV Export**: Efficiently exports scraped player statistics to CSV files.
 
 ## Requirements
-- Python 3.x
-- Scrapy
-- Pandas
-- Faker 
-- Pendulum
+- Refer to [requirements.txt](../requirements.txt) for the required packages and libraries
